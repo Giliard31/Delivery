@@ -1,100 +1,166 @@
 const express = require('express');
 const cors = require('cors');
+const admin = require('firebase-admin');
 
+// Inicialização do Firebase Admin (Certifique-se de configurar suas credenciais do Firebase Admin se necessário)
+// Para testes rápidos, ele conecta à estrutura básica do Firestore
+if (!admin.apps.length) {
+    admin.initializeApp({
+        credential: admin.credential.applicationDefault() // ou adicione suas credenciais do projeto
+    });
+}
+
+const db = admin.firestore();
 const app = express();
-app.use(express.json());
+
 app.use(cors());
+app.use(express.json());
 
-// Variáveis em memória (substitua por banco de dados real se preferir)
-let comissaoGlobal = 10;
-let lojas = [];
-let clientes = [];
-let produtos = [];
+let taxaComissaoGlobal = 10; // Taxa padrão de comissão (%)
 
-// 1. Clientes
-app.post('/api/clientes/cadastrar', (req, res) => {
-    const { nome, email, senha, tel, end } = req.body;
-    if (clientes.some(c => c.email === email)) {
-        return res.json({ sucesso: false, mensagem: 'E-mail já cadastrado!' });
+// --- ROTAS DE PRODUTOS ---
+
+// Pegar todos os produtos de todas as lojas
+app.get('/api/produtos/todos', async (req, res) => {
+    try {
+        const lojasSnapshot = await db.collection('lojas').get();
+        let todosProdutos = [];
+
+        for (let lojaDoc of lojasSnapshot.docs) {
+            const lojaData = lojaDoc.data();
+            const produtosSnapshot = await db.collection('lojas').doc(lojaDoc.id).collection('produtos').get();
+            
+            produtosSnapshot.forEach(prodDoc => {
+                todosProdutos.push({
+                    id: prodDoc.id,
+                    lojaEmail: lojaData.email,
+                    lojaNome: lojaData.nome || 'Restaurante',
+                    ...prodDoc.data()
+                });
+            });
+        }
+        res.json(todosProdutos);
+    } catch (error) {
+        // Fallback simulado caso o banco ainda esteja vazio ou configurando
+        res.json([]);
     }
-    clientes.push({ nome, email, senha, tel, end });
-    res.json({ sucesso: true, mensagem: 'Cliente cadastrado com sucesso!' });
 });
 
-app.post('/api/clientes/login', (req, res) => {
-    const { email, senha } = req.body;
-    const cliente = clientes.find(c => c.email === email && c.senha === senha);
-    if (!cliente) return res.json({ sucesso: false, mensagem: 'E-mail ou senha incorretos.' });
-    res.json({ sucesso: true, usuario: { nome: cliente.nome, email: cliente.email } });
-});
-
-// 2. Lojas & Aprovação
-app.post('/api/lojas/cadastrar', (req, res) => {
-    const { nome, cnpj, tel, email, senha } = req.body;
-    if (lojas.some(l => l.email === email)) {
-        return res.json({ sucesso: false, mensagem: 'E-mail de loja já cadastrado!' });
+// Pegar produtos de uma loja específica
+app.get('/api/produtos/:email', async (req, res) => {
+    try {
+        const emailLoja = req.params.email;
+        const produtosSnapshot = await db.collection('lojas').doc(emailLoja).collection('produtos').get();
+        let produtos = [];
+        produtosSnapshot.forEach(doc => produtos.push({ id: doc.id, ...doc.data() }));
+        res.json(produtos);
+    } catch (error) {
+        res.json([]);
     }
-    lojas.push({ nome, cnpj, tel, email, senha, aprovada: false });
-    res.json({ sucesso: true, mensagem: 'Loja cadastrada! Aguarde a aprovação do Administrador.' });
 });
 
-app.post('/api/lojas/login', (req, res) => {
-    const { email, senha } = req.body;
-    const loja = lojas.find(l => l.email === email && l.senha === senha);
-    if (!loja) return res.json({ sucesso: false, mensagem: 'Credenciais inválidas.' });
-    if (!loja.aprovada) return res.json({ sucesso: false, aprovada: false, mensagem: 'Loja pendente de aprovação.' });
-    res.json({ sucesso: true, loja: { nome: loja.nome, email: loja.email, aprovada: loja.aprovada } });
-});
-
-// 3. Produtos
-app.get('/api/produtos/todos', (req, res) => {
-    // Retorna produtos apenas de lojas que estão Aprovadas
-    const lojasAprovadas = lojas.filter(l => l.aprovada).map(l => l.email);
-    const produtosFiltrados = produtos.filter(p => lojasAprovadas.includes(p.emailLoja)).map(p => {
-        const lojaObj = lojas.find(l => l.email === p.emailLoja);
-        return { ...p, lojaNome: lojaObj ? lojaObj.nome : 'Loja' };
-    });
-    res.json(produtosFiltrados);
-});
-
-app.get('/api/produtos/:emailLoja', (req, res) => {
-    const { emailLoja } = req.params;
-    const prods = produtos.filter(p => p.emailLoja === emailLoja);
-    res.json(prods);
-});
-
-app.post('/api/produtos/adicionar', (req, res) => {
-    const { emailLoja, nome, preco } = req.body;
-    produtos.push({ emailLoja, nome, preco: parseFloat(preco) });
-    res.json({ sucesso: true, mensagem: 'Produto adicionado!' });
-});
-
-// 4. Painel do Administrador Principal
-app.get('/api/admin/dados', (req, res) => {
-    res.json({
-        comissao: comissaoGlobal,
-        lojas: lojas.map(l => ({ nome: l.nome, email: l.email, aprovada: l.aprovada }))
-    });
-});
-
-app.post('/api/admin/aprovar', (req, res) => {
-    const { email } = req.body;
-    const loja = lojas.find(l => l.email === email);
-    if (loja) {
-        loja.aprovada = true;
-        return res.json({ sucesso: true, mensagem: 'Loja aprovada com sucesso!' });
+// Adicionar produto na loja
+app.post('/api/produtos/adicionar', async (req, res) => {
+    try {
+        const { emailLoja, nome, preco } = req.body;
+        await db.collection('lojas').doc(emailLoja).collection('produtos').add({
+            nome,
+            preco: parseFloat(preco),
+            criadoEm: new Date().toISOString()
+        });
+        res.json({ sucesso: true, mensagem: 'Produto adicionado com sucesso!' });
+    } catch (error) {
+        res.status(500).json({ sucesso: false, mensagem: error.message });
     }
-    res.json({ sucesso: false, mensagem: 'Loja não encontrada.' });
+});
+
+// --- ROTAS DE CLIENTES ---
+
+app.post('/api/clientes/cadastrar', async (req, res) => {
+    try {
+        const { nome, email, senha, tel, end } = req.body;
+        await db.collection('clientes').doc(email).set({ nome, email, senha, tel, end });
+        res.json({ sucesso: true, mensagem: 'Cliente cadastrado com sucesso!' });
+    } catch (error) {
+        res.status(500).json({ sucesso: false, mensagem: error.message });
+    }
+});
+
+app.post('/api/clientes/login', async (req, res) => {
+    try {
+        const { email, senha } = req.body;
+        const doc = await db.collection('clientes').doc(email).get();
+        if (!doc.exists || doc.data().senha !== senha) {
+            return res.json({ sucesso: false, mensagem: 'E-mail ou senha inválidos.' });
+        }
+        res.json({ sucesso: true, usuario: doc.data() });
+    } catch (error) {
+        res.status(500).json({ sucesso: false, mensagem: error.message });
+    }
+});
+
+// --- ROTAS DE LOJAS ---
+
+app.post('/api/lojas/cadastrar', async (req, res) => {
+    try {
+        const { nome, cnpj, tel, email, senha } = req.body;
+        await db.collection('lojas').doc(email).set({
+            nome, cnpj, tel, email, senha,
+            aprovada: false // Lojas começam pendentes de aprovação pelo Admin
+        });
+        res.json({ sucesso: true, mensagem: 'Loja cadastrada! Aguarde a aprovação do Administrador.' });
+    } catch (error) {
+        res.status(500).json({ sucesso: false, mensagem: error.message });
+    }
+});
+
+app.post('/api/lojas/login', async (req, res) => {
+    try {
+        const { email, senha } = req.body;
+        const doc = await db.collection('lojas').doc(email).get();
+        if (!doc.exists || doc.data().senha !== senha) {
+            return res.json({ sucesso: false, mensagem: 'E-mail ou senha incorretos.' });
+        }
+        const lojaData = doc.data();
+        if (!lojaData.aprovada) {
+            return res.json({ sucesso: false, aprovada: false, mensagem: 'Sua loja ainda está aguardando aprovação.' });
+        }
+        res.json({ sucesso: true, loja: lojaData });
+    } catch (error) {
+        res.status(500).json({ sucesso: false, mensagem: error.message });
+    }
+});
+
+// --- ROTAS DO ADMINISTRADOR ---
+
+app.get('/api/admin/dados', async (req, res) => {
+    try {
+        const lojasSnapshot = await db.collection('lojas').get();
+        let lojas = [];
+        lojasSnapshot.forEach(doc => lojas.push({ id: doc.id, ...doc.data() }));
+        res.json({ comissao: taxaComissaoGlobal, lojas });
+    } catch (error) {
+        res.json({ comissao: taxaComissaoGlobal, lojas: [] });
+    }
+});
+
+app.post('/api/admin/aprovar', async (req, res) => {
+    try {
+        const { email } = req.body;
+        await db.collection('lojas').doc(email).update({ aprovada: true });
+        res.json({ sucesso: true, mensagem: 'Loja aprovada com sucesso!' });
+    } catch (error) {
+        res.status(500).json({ sucesso: false, mensagem: error.message });
+    }
 });
 
 app.post('/api/admin/comissao', (req, res) => {
     const { comissao } = req.body;
-    if (comissao !== undefined) {
-        comissaoGlobal = parseFloat(comissao);
-        return res.json({ sucesso: true, mensagem: 'Taxa de comissão atualizada!' });
-    }
-    res.json({ sucesso: false, mensagem: 'Valor inválido.' });
+    taxaComissaoGlobal = comissao;
+    res.json({ sucesso: true, mensagem: 'Taxa de comissão atualizada com sucesso!' });
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Servidor rodando na porta ${PORT}`));
+app.listen(PORT, () => {
+    console.log(`Servidor rodando na porta ${PORT}`);
+});
