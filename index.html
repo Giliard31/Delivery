@@ -9,24 +9,26 @@
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#1a365d">
 
-    <!-- SDKs do Firebase (Modular v10) -->
+    <!-- SDKs do Firebase (Modular v10) com as suas credenciais oficiais -->
     <script type="module">
-        // IMPORTANTE: Substitua com as credenciais do seu projeto Firebase
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getFirestore } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-analytics.js";
 
         const firebaseConfig = {
-            apiKey: "SUA_API_KEY",
-            authDomain: "seu-projeto.firebaseapp.com",
-            projectId: "seu-projeto",
-            storageBucket: "seu-projeto.appspot.com",
-            messagingSenderId: "SEU_MESSAGING_ID",
-            appId: "SEU_APP_ID"
+          apiKey: "AIzaSyDLp0OHf6zK3k3ewCCGb8ZaORre_xQKN54",
+          authDomain: "delivery-app-2bbe9.firebaseapp.com",
+          projectId: "delivery-app-2bbe9",
+          storageBucket: "delivery-app-2bbe9.firebasestorage.app",
+          messagingSenderId: "374436347899",
+          appId: "1:374436347899:web:f05551bef7349a9f81d55e",
+          measurementId: "G-59NX2KZ8FH"
         };
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
-        window.db = db; // Disponibiliza o banco para as funções globais
+        const analytics = getAnalytics(app);
+        window.db = db;
     </script>
 
     <style>
@@ -74,7 +76,6 @@
     </header>
 
     <div class="main-container">
-        
         <!-- 1. VITRINE GERAL -->
         <div id="secao-vitrine-geral" class="secao-app">
             <h2>Pratos Disponíveis em Todos os Restaurantes</h2>
@@ -183,7 +184,6 @@
                 <tbody id="tabela-lojas-admin"></tbody>
             </table>
         </div>
-
     </div>
 
     <!-- Modal Carrinho Bloqueado -->
@@ -204,8 +204,8 @@
     </footer>
 
     <script>
-        const URL_API = "https://meudelivery2.onrender.com"; // Usado se ainda precisar de ponte com o Render
-        const EMAIL_ADMIN_MASTER = "admin@delivery.com"; // Seu e-mail de Admin Principal
+        const URL_API = "https://meudelivery2.onrender.com";
+        const EMAIL_ADMIN_MASTER = "admin@delivery.com"; // E-mail mestre do Admin Principal
 
         let carrinho = [];
         let usuarioLogado = JSON.parse(localStorage.getItem('usuario_ativo')) || null;
@@ -302,7 +302,6 @@
 
         function fecharModal() { document.getElementById('modal-checkout').style.display = 'none'; }
 
-        // Cliente Auth
         function alternarModoCliente() {
             modoCadastroCli = !modoCadastroCli;
             document.getElementById('campo-nome-cli').style.display = modoCadastroCli ? 'flex' : 'none';
@@ -354,7 +353,6 @@
             }
         }
 
-        // Lojista ou Admin Principal Auth
         function alternarModoLoja() {
             modoCadastroLoja = !modoCadastroLoja;
             document.getElementById('campos-cad-loja').style.display = modoCadastroLoja ? 'block' : 'none';
@@ -370,7 +368,7 @@
             const email = document.getElementById('l-email').value;
             const senha = document.getElementById('l-senha').value;
 
-            // RECONHECIMENTO AUTOMÁTICO DO ADMIN PRINCIPAL PELO E-MAIL DIGITADO
+            // RECONHECIMENTO AUTOMÁTICO DO ADMIN PRINCIPAL
             if (email === EMAIL_ADMIN_MASTER) {
                 usuarioLogado = { nome: 'Administrador Principal', email };
                 tipoUsuarioAtivo = 'admin';
@@ -472,7 +470,6 @@
             carregarProdutosLojaHTML();
         }
 
-        // Admin Actions
         async function carregarDadosAdmin() {
             try {
                 const res = await fetch(`${URL_API}/api/admin/dados`);
@@ -529,14 +526,12 @@
             irParaVitrineGeral();
         }
 
-        // Registro do Service Worker para o PWA
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('./sw.js').catch(err => console.log('Erro PWA:', err));
             });
         }
 
-        // Inicialização
         atualizarCabecalho();
         irParaVitrineGeral();
     </script>
